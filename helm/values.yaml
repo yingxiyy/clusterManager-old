@@ -104,13 +104,13 @@ flink:
     adminPassword: "flinkAdminPassword123"
 
 # ------------------------------------------------------------------------------
-# 3. APACHE KAFKA 3.9 (KRaft mode, 3-member cluster, Java 21 LTS + SASL Authentication)
+# 3. APACHE KAFKA 4.0.1 (KRaft Native, 3-member cluster, Java 21 LTS + SASL Authentication)
 # ------------------------------------------------------------------------------
 kafka:
   enabled: true
   image:
     repository: "apache/kafka" # Official Apache Kafka Docker Hub image
-    tag: "3.9.0" # Official Apache Kafka 3.9 (Java 21 LTS Recommended)
+    tag: "4.0.1" # Official Apache Kafka 4.0.1 (Java 21 LTS Native, Pure KRaft Architecture)
   replicas: 3 # 3 members for Raft controller & broker quorum
   clusterId: "4L622nShTZaIO_BL5JDU7Q" # 16-byte base64 cluster ID
   kraft:
@@ -264,3 +264,37 @@ zookeeper:
     limits:
       cpu: "1000m"
       memory: "2Gi"
+
+# ------------------------------------------------------------------------------
+# 8. NGINX FRONTEND ENTRY & API REVERSE PROXY (Static Frontend Outside Docker)
+# ------------------------------------------------------------------------------
+nginx:
+  enabled: true
+  replicas: 2 # 2-member HA frontend ingress proxy
+  image:
+    repository: "nginx" # Official Docker Hub Nginx image
+    tag: "1.27-alpine"
+  ports:
+    http: 8088 # Frontend SPA & API proxy port
+    mgmt: 8000 # Purge/mgmt port
+    nodePortHttp: 30088 # NodePort for VIP/external access (http://192.168.1.100:30088)
+    nodePortMgmt: 30080
+  # Upstream backend Spring Cloud Gateway / Microservices Controller
+  upstream:
+    name: "dci_backend"
+    server: "gateway:8080" # Points to internal Spring Cloud Gateway service
+  # HostPath mount: frontend static dist placed on physical host outside Docker
+  frontendDist:
+    hostPath: "/data/frontend/dist" # Physical host directory on 3 physical machines
+    mountPath: "/home/dci/web/dist" # In-container path matching nginx.conf
+  logPath:
+    hostPath: "/data/frontend/logs" # Host logging directory
+    mountPath: "/home/dci/web/log"
+  resources:
+    requests:
+      cpu: "250m"
+      memory: "256Mi"
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+

@@ -31,7 +31,7 @@ data:
     blob.server.port: {{ .Values.flink.jobManager.blobPort }}
     queryable-state.server.port: {{ .Values.flink.jobManager.queryPort }}
     
-    # S3 MinIO Checkpointing & Savepoints Storage (Java 8 s3-fs-hadoop / s3-fs-presto plugin)
+    # S3 MinIO Checkpointing & Savepoints Storage (Java 21 s3-fs-hadoop / s3-fs-presto plugin)
     {{- if .Values.flink.s3StateBackend.enabled }}
     state.backend: filesystem
     state.checkpoints.dir: {{ .Values.flink.s3StateBackend.checkpointDir }}

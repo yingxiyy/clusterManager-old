@@ -79,6 +79,10 @@ export default function App() {
   const [mysqlReplicas, setMysqlReplicas] = useState<number>(3);
   const [redisReplicas, setRedisReplicas] = useState<number>(3);
   const [minioReplicas, setMinioReplicas] = useState<number>(4);
+  const [nginxReplicas, setNginxReplicas] = useState<number>(2);
+  const [nginxHttpPort, setNginxHttpPort] = useState<number>(8088);
+  const [nginxNodePort, setNginxNodePort] = useState<number>(30088);
+  const [nginxDistPath, setNginxDistPath] = useState<string>('/data/frontend/dist');
   const [useKraft, setUseKraft] = useState<boolean>(true);
   const [enableZookeeper, setEnableZookeeper] = useState<boolean>(true);
   const [s3Endpoint, setS3Endpoint] = useState<string>('http://minio:9000');
@@ -619,7 +623,7 @@ FLINK_ADMIN_PASSWORD=${flinkAdminPassword}
    Auth Password: ${redisPassword}
    MasterAuth:    ${redisPassword}
 
-5. Apache Kafka 3.9 KRaft (Java 21 LTS, Port 9092 SASL_PLAINTEXT)
+5. Apache Kafka 4.0.1 KRaft (Java 21 LTS Native, Port 9092 SASL_PLAINTEXT)
    Admin User:    ${kafkaAdminUser}
    Admin Password:${kafkaAdminPassword}
    Client User:   ${kafkaAppUser}
@@ -1034,7 +1038,7 @@ kafka:
   enabled: true
   image:
     repository: "apache/kafka"
-    tag: "3.9.0"
+    tag: "4.0.1" # Apache Kafka 4.0.1 (Java 21 LTS Native, Pure KRaft)
   replicas: ${kafkaReplicas}
   kraft:
     enabled: ${useKraft}
@@ -1105,9 +1109,30 @@ zookeeper:
     enabled: true
     adminUser: "${zkAdminUser}"
     adminPassword: "${zkAdminPassword}"
+
+nginx:
+  enabled: true
+  replicas: ${nginxReplicas}
+  image:
+    repository: "nginx"
+    tag: "1.27-alpine"
+  ports:
+    http: ${nginxHttpPort}
+    mgmt: 8000
+    nodePortHttp: ${nginxNodePort}
+  upstream:
+    name: "dci_backend"
+    server: "gateway:8080"
+  frontendDist:
+    hostPath: "${nginxDistPath}" # 宿主机外部物理目录，修改前端无需重新构建镜像
+    mountPath: "/home/dci/web/dist"
+  logPath:
+    hostPath: "/data/frontend/logs"
+    mountPath: "/home/dci/web/log"
 `;
   }, [
     flinkTaskManagers, kafkaReplicas, zkReplicas, mongoReplicas, mysqlReplicas, redisReplicas, minioReplicas,
+    nginxReplicas, nginxHttpPort, nginxNodePort, nginxDistPath,
     useKraft, enableZookeeper, s3Endpoint, minioUser, minioPassword, mysqlRootPassword, mysqlAppUser,
     mysqlAppPassword, mysqlReplPassword, mongoRootUser, mongoRootPassword, mongoAppUser, mongoAppPassword,
     redisPassword, kafkaAdminUser, kafkaAdminPassword, kafkaAppUser, kafkaAppPassword, zkAdminUser,
@@ -1131,7 +1156,7 @@ zookeeper:
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                3-Master HA K8s • ZooKeeper 3.9.3 • Kafka 3.9 (Java 21) • Flink 2.0 (Java 21) • MongoDB 8.0.9 • MySQL 8.4.6 • Redis 6.2.6 • MinIO S3
+                3-Master HA K8s • ZooKeeper 3.9.3 (Java 21) • Kafka 4.0.1 (Java 21) • Flink 2.0 (Java 21) • MongoDB 8.0.9 • MySQL 8.4.6 • Redis 6.2.6 • MinIO S3
               </p>
             </div>
           </div>
@@ -1522,155 +1547,6 @@ zookeeper:
               </div>
             </div>
 
-            {/* External Git & Outbound Network Connectivity Tester Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
-                    <Globe className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      外部网络与 Git 连通性测试 (External Git Connectivity Hub)
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                        Git 2.34+ 物理机/Pod 出网就绪
-                      </span>
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      宿主机与 Kubernetes Pod 原生支持访问外部公网 Git（GitHub / Gitee / GitLab），可直接克隆代码、Helm Charts 与微服务工程。
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quick Presets */}
-                <div className="flex items-center gap-1.5 text-xs font-mono">
-                  <span className="text-[11px] text-slate-400">预设仓库:</span>
-                  {[
-                    { label: 'GitHub', url: 'https://github.com/torvalds/linux.git' },
-                    { label: 'Gitee', url: 'https://gitee.com/oschina/git-osc.git' },
-                    { label: 'GitLab', url: 'https://gitlab.com/gitlab-org/gitlab.git' }
-                  ].map((p) => (
-                    <button
-                      key={p.label}
-                      onClick={() => {
-                        setGitTestUrl(p.url);
-                        testGitConnectivity(p.url);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 text-[11px] transition"
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* URL Input Bar & Action */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                <div className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-purple-400 shrink-0" />
-                  <input
-                    type="text"
-                    value={gitTestUrl}
-                    onChange={(e) => setGitTestUrl(e.target.value)}
-                    placeholder="输入外部 Git 仓库地址 (https://github.com/...)"
-                    className="w-full bg-transparent text-white font-mono text-xs focus:outline-none"
-                  />
-                </div>
-                <button
-                  onClick={() => testGitConnectivity()}
-                  disabled={gitTestLoading}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition shrink-0"
-                >
-                  {gitTestLoading ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>正在探查外部握手...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5" />
-                      <span>测试 Git 连通性</span>
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Live Test Feedback Banner */}
-              {gitTestResult && (
-                <div
-                  className={`p-4 rounded-xl border text-xs font-mono space-y-1.5 transition ${
-                    gitTestResult.accessible
-                      ? 'bg-emerald-950/80 border-emerald-500/40 text-emerald-200'
-                      : 'bg-rose-950/80 border-rose-500/40 text-rose-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between font-bold">
-                    <span className="flex items-center gap-2">
-                      {gitTestResult.accessible ? (
-                        <>
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                          <span>✅ 外部 Git 仓库握手成功！(耗时: {gitTestResult.durationMs}ms)</span>
-                        </>
-                      ) : (
-                        <>
-                          <AlertTriangle className="w-4 h-4 text-rose-400" />
-                          <span>❌ 外部 Git 仓库连接失败</span>
-                        </>
-                      )}
-                    </span>
-                    <span className="text-[10px] text-slate-400">git ls-remote HEAD</span>
-                  </div>
-
-                  {gitTestResult.output && (
-                    <div className="text-[11px] text-slate-300 bg-slate-900/80 p-2 rounded border border-slate-800 truncate">
-                      Remote Ref: {gitTestResult.output}
-                    </div>
-                  )}
-
-                  {gitTestResult.error && (
-                    <div className="text-[11px] text-rose-300 bg-slate-900/80 p-2 rounded border border-rose-900/60">
-                      {gitTestResult.error}
-                    </div>
-                  )}
-
-                  {gitTestResult.suggestion && (
-                    <div className="text-[10px] text-slate-400 font-sans">
-                      💡 提示：{gitTestResult.suggestion}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tips & Commands Quick Bar */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                  <div className="text-cyan-400 font-bold flex items-center gap-1.5">
-                    <Terminal className="w-3.5 h-3.5" /> 物理机秒级验证命令
-                  </div>
-                  <div className="text-[10px] text-slate-300 bg-slate-900 p-1.5 rounded truncate">
-                    git ls-remote https://github.com/torvalds/linux.git HEAD
-                  </div>
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                  <div className="text-amber-400 font-bold flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5" /> 国内机房 GitHub 加速前缀
-                  </div>
-                  <div className="text-[10px] text-amber-300 bg-slate-900 p-1.5 rounded truncate">
-                    git clone https://ghproxy.net/https://github.com/...
-                  </div>
-                </div>
-
-                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1">
-                  <div className="text-emerald-400 font-bold flex items-center gap-1.5">
-                    <Key className="w-3.5 h-3.5" /> 私有仓库 Token 克隆语法
-                  </div>
-                  <div className="text-[10px] text-emerald-300 bg-slate-900 p-1.5 rounded truncate">
-                    git clone https://&lt;token&gt;@github.com/org/repo.git
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -3093,9 +2969,9 @@ db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})`
                 </div>
 
                 <div className="bg-slate-950 p-4 rounded-xl border border-purple-500/30">
-                  <div className="text-purple-400 font-bold text-sm">Kafka 3.9 KRaft</div>
+                  <div className="text-purple-400 font-bold text-sm">Kafka 4.0.1 KRaft</div>
                   <div className="text-slate-300 mt-1">{kafkaReplicas} Members (Combined Roles)</div>
-                  <div className="text-slate-500 text-[10px] mt-1">Java 21 LTS • High-Throughput Raft</div>
+                  <div className="text-slate-500 text-[10px] mt-1">Java 21 LTS Native • Pure KRaft</div>
                 </div>
 
                 <div className="bg-slate-950 p-4 rounded-xl border border-cyan-500/30">
@@ -3120,6 +2996,12 @@ db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})`
                   <div className="text-rose-400 font-bold text-sm">Redis 6.2.6</div>
                   <div className="text-slate-300 mt-1">{redisReplicas} Nodes + Sentinel HA</div>
                   <div className="text-slate-500 text-[10px] mt-1">Sentinel Quorum 2 (:6379/:26379)</div>
+                </div>
+
+                <div className="bg-slate-950 p-4 rounded-xl border border-sky-500/30">
+                  <div className="text-sky-400 font-bold text-sm">Nginx 1.27 前端入口网关</div>
+                  <div className="text-slate-300 mt-1">{nginxReplicas} Pods • 宿主机目录挂载</div>
+                  <div className="text-slate-500 text-[10px] mt-1">代码放外面免重构 • 反代 Gateway (:30088/:8088)</div>
                 </div>
               </div>
             </div>

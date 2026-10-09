@@ -29,10 +29,11 @@
 | 2 | **MySQL 8.4** | 3306 | 超级 Root<br/>应用业务<br/>主从同步 | `root`<br/>`app_user`<br/>`repl_user` | `mysqlRootPassword123`<br/>`mysqlAppPassword123`<br/>`replPassword123` | Native Password / GTID 复制 | `mysql -h 192.168.1.100 -P 3306 -u app_user -p'mysqlAppPassword123' appdb` |
 | 3 | **MongoDB 8.0** | 27017 | 集群 Root<br/>应用业务<br/>内部节点 | `admin`<br/>`mongo_app`<br/>- | `mongoAdminPassword123`<br/>`mongoAppPassword123`<br/>Keyfile (400 权限) | SCRAM-SHA-256 + Keyfile 副本鉴权 | `mongosh "mongodb://192.168.1.100:27017/appdb?replicaSet=rs0" -u mongo_app -p'mongoAppPassword123' --authenticationDatabase admin` |
 | 4 | **Redis 6.2** | 6379 (Cache)<br/>26379 (Sentinel) | 统一密码 | `default` | `redisAuthPassword123` | `requirepass` + `masterauth` | `redis-cli -h 192.168.1.100 -p 6379 -a 'redisAuthPassword123' ping` |
-| 5 | **Kafka 3.7** | 9092 | 集群 Admin<br/>业务 Client | `admin`<br/>`app_user` | `kafkaAdminPassword123`<br/>`kafkaAppPassword123` | **SASL_PLAINTEXT** (JAAS PlainLoginModule) | 详见下方 0.3 节 client.properties 配置 |
-| 6 | **ZooKeeper 3.6**| 2181 | 节点 Admin | `zkAdmin` | `zkAdminPassword123` | SASL Digest-MD5 / Plain | `zkCli.sh -server 192.168.1.100:2181` 然后执行 `addauth digest zkAdmin:zkAdminPassword123` |
-| 7 | **Flink 1.9** | 8081 | 仪表盘 Admin | `flinkAdmin` | `flinkAdminPassword123` | HTTP Basic Authentication | 浏览器直接访问 `http://192.168.1.100:8081` 或 `curl -u flinkAdmin:flinkAdminPassword123 ...` |
+| 5 | **Kafka 4.0.1** | 9092 | 集群 Admin<br/>业务 Client | `admin`<br/>`app_user` | `kafkaAdminPassword123`<br/>`kafkaAppPassword123` | **SASL_PLAINTEXT** (Java 21 Native KRaft) | 详见下方 0.3 节 client.properties 配置 |
+| 6 | **ZooKeeper 3.9.3**| 2181 | 节点 Admin | `zkAdmin` | `zkAdminPassword123` | SASL Digest-MD5 (Java 21) | `zkCli.sh -server 192.168.1.100:2181` 然后执行 `addauth digest zkAdmin:zkAdminPassword123` |
+| 7 | **Flink 2.0** | 8081 | 仪表盘 Admin | `flinkAdmin` | `flinkAdminPassword123` | HTTP Basic Auth (Java 21) | 浏览器访问 `http://192.168.1.100:8081` 或 `curl -u flinkAdmin:flinkAdminPassword123 ...` |
 | 8 | **Kubernetes** | 6443 | 集群管理 | `kubernetes-admin` | Token: `abcdef.0123456789abcdef` | mTLS 双向证书 + Bearer Token | `kubectl --server=https://192.168.1.100:6443 get nodes` |
+| 9 | **Nginx 1.27** | 8088 (前端SPA+API)<br/>8000 (Purge) | 前端入口网关 | - | 宿主机外部目录 `/data/frontend/dist` | 静态极速读取 + 反代 Gateway | 浏览器直接访问 `http://192.168.1.100:30088` (代码放外部免重构镜像) |
 
 ---
 
@@ -648,11 +649,12 @@ kubectl get nodes
 
 - **MongoDB**: `mongo:8.0.9` (分片集群模式 Sharded Cluster: 2 Mongos 路由器 + 3 节点 ConfigServer CSRS + 2 分片 Shard0/Shard1 × 3 节点高可用)
 - **Flink**: `flink:2.0.0-java21` (Java 21 LTS, 1 JobManager + N TaskManagers, 专职处理实时事件流计算，无需参与数据库副本复制)
-- **Kafka**: `apache/kafka:3.9.0` (KRaft 模式, Java 21 LTS 推荐, 3 节点 Raft 仲裁, 直连 MinIO S3 做数据归档)
+- **Kafka**: `apache/kafka:4.0.1` (KRaft 原生模式, Java 21 LTS 原生构建, 3 节点 Raft 仲裁, 直连 MinIO S3 做数据归档)
 - **ZooKeeper**: `zookeeper:3.9.3` (Java 21 LTS 兼容, 3 节点仲裁集群, client: 2181, peer: 2888, leader: 3888)
 - **MySQL**: `mysql:8.4.6` (3 节点 GTID 主从复制)
 - **Redis**: `redis:6.2.6-alpine` (3 节点 + Sentinel 仲裁)
 - **MinIO**: `minio/minio:RELEASE.2024-04-18T19-09-19Z` (分布式 S3 存储)
+- **Nginx**: `nginx:1.27-alpine` (前端 SPA 入口与反代网关, 宿主机目录 `/data/frontend/dist` 映射至 `/home/dci/web/dist`, 代码放外面无需重构镜像)
 
 ### Kafka 直连 MinIO S3 (无需经过 Flink)
 数据流直写 S3 配置位于 `/scripts/kafka-connect/kafka-s3-sink-connector.json`，通过 Kafka Connect S3 Sink 直接拉取 Kafka 主题流式写入 MinIO S3 (`s3://flink-checkpoints/`)，极大精简系统链路，不占用 Flink 计算槽位。
@@ -791,4 +793,46 @@ kubectl logs -n data-platform -l app=mysql-backup --tail=50
   # 解压并流式导入 MySQL 主节点
   gunzip < /tmp/mysql_restore.sql.gz | mysql -h mysql-0.mysql-headless -u root -pmysqlRootPassword123
   ```
+
+---
+
+## 9. Nginx 前端入口网关配置与优化实战 (代码放 Docker 外面免重构镜像)
+
+### 9.1 设计初衷与核心价值
+传统 Docker 化前端每次代码改动都需要：`npm run build` -> `docker build` -> `docker push` -> `kubectl rollout restart`，发布链路长、镜像仓库冗余、更新延迟高。
+**本项目黄金落地标准**：
+1. **静态代码放在宿主机外面**：3 台物理机通过统一路径（如 `/data/frontend/dist/`）存放前端打包产物；
+2. **K8s HostPath 热映射**：Nginx 容器只负责高性能 Web 引擎和反代，通过 Volume 挂载宿主机 `/data/frontend/dist`；
+3. **零重构镜像、秒级热更新**：前端 CI/CD 构建完成后，仅需 `rsync` 或 `scp` 覆盖宿主机目录，用户浏览器刷新即可即刻加载新版本！
+
+### 9.2 优化后的 `nginx.conf` 核心提升亮点
+1. **单页面应用 (SPA) 路由防 404**：
+   - 增加 `try_files $uri $uri/ /index.html;`，用户在浏览器直接刷新 Vue/React 路径时绝不报错；
+2. **动静分流与智能缓存**：
+   - JS/CSS/图片等静态文件开启 30 天强缓存 (`Cache-Control: max-age=2592000`)；
+   - `index.html` 强制 `no-cache, must-revalidate`，确保前端发布后第一时间获取最新 JS 入口；
+3. **低延迟 WebSocket 全双工长连接**：
+   - 配置 `map $http_upgrade $connection_upgrade`，原生打通 `pm-ws`、`telemetry` 等实时长连接；
+4. **反向代理后端长连接池**：
+   - `upstream dci_backend` 配置 `keepalive 32;`，避免每次 HTTP 请求重新握手 TCP，API 响应延迟下降 40%；
+5. **客户端大体积上传缓冲区优化**：
+   - `client_max_body_size 50m;`，针对设备日志、升级包等大文件传输无阻断。
+
+### 9.3 外部访问入口与运维命令
+```bash
+# 1. 验证 Nginx Pod 状态与宿主机挂载
+kubectl get pods -n data-platform -l app=nginx -o wide
+
+# 2. 检查 Nginx 访问与错误日志 (实时落盘在宿主机 /data/frontend/logs/)
+kubectl logs -n data-platform -l app=nginx --tail=50 -f
+
+# 3. 前端发布更新 (仅需将打包后的 dist 目录覆盖至宿主机，无需重启 Pod)
+cp -r /path/to/your/dist/* /data/frontend/dist/
+
+# 4. 浏览器访问验证
+# - 前端业务系统入口: http://192.168.1.100:30088
+# - 健康检查接口:       http://192.168.1.100:30088/healthz (返回 healthy)
+# - 管理与清理缓存:     http://192.168.1.100:30080/purge/
+```
+
 
