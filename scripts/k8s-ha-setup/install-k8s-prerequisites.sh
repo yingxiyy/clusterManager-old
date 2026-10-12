@@ -41,6 +41,9 @@ mkdir -p /etc/containerd
 containerd config default | tee /etc/containerd/config.toml > /dev/null
 # Enable SystemdCgroup for Kubernetes 1.28+
 sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+# Replace default sandbox_image registry.k8s.io with aliyun mirror to avoid pause pull timeout
+sed -i -E 's#(sandbox_image\s*=\s*)"[^"]+"#\1"registry.aliyuncs.com/google_containers/pause:3.9"#g' /etc/containerd/config.toml
+sed -i 's#registry.k8s.io/pause:[0-9.]*#registry.aliyuncs.com/google_containers/pause:3.9#g' /etc/containerd/config.toml
 
 systemctl daemon-reload
 systemctl enable --now containerd

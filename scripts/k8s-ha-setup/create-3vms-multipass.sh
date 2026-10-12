@@ -6,8 +6,30 @@
 set -euo pipefail
 
 CPUS="${1:-2}"
-MEMORY="${2:-4G}"
-DISK="${3:-20G}"
+RAW_MEM="${2:-4G}"
+RAW_DISK="${3:-20G}"
+
+# 如果用户只输入了纯数字（如 8 或 40），自动补全单位 G
+if [[ "${RAW_MEM}" =~ ^[0-9]+$ ]]; then
+    MEMORY="${RAW_MEM}G"
+else
+    MEMORY="${RAW_MEM}"
+fi
+
+if [[ "${RAW_DISK}" =~ ^[0-9]+$ ]]; then
+    DISK="${RAW_DISK}G"
+else
+    DISK="${RAW_DISK}"
+fi
+
+# multipass 命令检测：如果以 sudo 运行，优先切到实际登录用户或保持普通用户
+MP_CMD="multipass"
+if [ -n "${SUDO_USER:-}" ] && [ "${SUDO_USER}" != "root" ]; then
+    # 如果用户使用 sudo 执行，multipass 命令用真实用户上下文运行，以保留认证凭据
+    MP_USER_CMD="sudo -u ${SUDO_USER} multipass"
+else
+    MP_USER_CMD="multipass"
+fi
 
 echo "=================================================================="
 echo "🚀 正在单台物理机上准备 3 台虚拟机 (k8s-master-01 ~ 03)..."
@@ -25,22 +47,45 @@ fi
 
 # 2. 创建 3 台虚拟机
 for node in k8s-master-01 k8s-master-02 k8s-master-03; do
-    if multipass info "${node}" &>/dev/null; then
+    if ${MP_USER_CMD} info "${node}" &>/dev/null; then
         echo "✅ 虚拟机 [${node}] 已存在，跳过创建。"
     else
         echo "==> 正在创建虚拟机 [${node}]..."
-        multipass launch 22.04 --name "${node}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
+        ${MP_USER_CMD} launch 22.04 --name "${node}" --cpus "${CPUS}" --memory "${MEMORY}" --disk "${DISK}"
     fi
 done
 
-# 3. 提取 3 台虚拟机的 IP 地址
-IP1=$(multipass info k8s-master-01 | grep IPv4 | awk '{print $2}')
-IP2=$(multipass info k8s-master-02 | grep IPv4 | awk '{print $2}')
-IP3=$(multipass info k8s-master-03 | grep IPv4 | awk '{print $2}')
+# 3. 提取 3 台虚拟机的 IP 地址（确保 DHCP 已获取到有效 IPv4 地址）
+get_node_ip() {
+    local target="$1"
+    local ip=""
+    # 尝试从 info 获取
+    ip=$(${MP_USER_CMD} info "${target}" 2>/dev/null | awk '/IPv4:/ {print $2}')
+    # 如果输出是 -- 或空，尝试在虚拟机内直接执行 hostname -I
+    if [ -z "${ip}" ] || [ "${ip}" = "--" ]; then
+        ip=$(${MP_USER_CMD} exec "${target}" -- hostname -I 2>/dev/null | awk '{print $1}')
+    fi
+    # 轮询最多 15 秒等待 IP 分配
+    local attempts=0
+    while { [ -z "${ip}" ] || [ "${ip}" = "--" ]; } && [ ${attempts} -lt 15 ]; do
+        sleep 1
+        ip=$(${MP_USER_CMD} exec "${target}" -- hostname -I 2>/dev/null | awk '{print $1}')
+        attempts=$((attempts + 1))
+    done
+    echo "${ip}"
+}
+
+IP1=$(get_node_ip "k8s-master-01")
+IP2=$(get_node_ip "k8s-master-02")
+IP3=$(get_node_ip "k8s-master-03")
 
 # 计算同网段建议 VIP (例如以 .100 结尾)
-SUBNET_PREFIX=$(echo "${IP1}" | cut -d. -f1-3)
-SUGGESTED_VIP="${SUBNET_PREFIX}.100"
+SUBNET_PREFIX=$(echo "${IP1}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | cut -d. -f1-3 || echo "10.0.4")
+if [ -n "${SUBNET_PREFIX}" ] && [ "${SUBNET_PREFIX}" != "--" ]; then
+    SUGGESTED_VIP="${SUBNET_PREFIX}.100"
+else
+    SUGGESTED_VIP="10.0.4.100"
+fi
 
 echo ""
 echo "=================================================================="
@@ -58,13 +103,13 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 echo "==> 正在将安装脚本同步到 3 台虚拟机内部..."
 for node in k8s-master-01 k8s-master-02 k8s-master-03; do
     echo "--> 传输脚本至 [${node}]..."
-    multipass exec "${node}" -- sudo mkdir -p /root/scripts/k8s-ha-setup
-    multipass transfer "${SCRIPT_DIR}/install-k8s-prerequisites.sh" "${node}:/tmp/install-k8s-prerequisites.sh"
-    multipass transfer "${SCRIPT_DIR}/setup-haproxy-keepalived.sh" "${node}:/tmp/setup-haproxy-keepalived.sh"
-    multipass transfer "${SCRIPT_DIR}/init-masters.sh" "${node}:/tmp/init-masters.sh"
+    ${MP_USER_CMD} exec "${node}" -- sudo mkdir -p /root/scripts/k8s-ha-setup
+    ${MP_USER_CMD} transfer "${SCRIPT_DIR}/install-k8s-prerequisites.sh" "${node}:/tmp/install-k8s-prerequisites.sh"
+    ${MP_USER_CMD} transfer "${SCRIPT_DIR}/setup-haproxy-keepalived.sh" "${node}:/tmp/setup-haproxy-keepalived.sh"
+    ${MP_USER_CMD} transfer "${SCRIPT_DIR}/init-masters.sh" "${node}:/tmp/init-masters.sh"
     
     echo "--> 在 [${node}] 内部执行系统优化与 containerd / kubeadm 安装..."
-    multipass exec "${node}" -- sudo bash /tmp/install-k8s-prerequisites.sh
+    ${MP_USER_CMD} exec "${node}" -- sudo bash /tmp/install-k8s-prerequisites.sh
 done
 
 echo ""

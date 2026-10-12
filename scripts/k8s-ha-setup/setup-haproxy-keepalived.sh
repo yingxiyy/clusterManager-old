@@ -57,7 +57,7 @@ defaults
     timeout server  50000ms
 
 frontend k8s-apiserver
-    bind ${VIP}:6443
+    bind 0.0.0.0:16443
     mode tcp
     option tcplog
     default_backend k8s-apiserver-backend
