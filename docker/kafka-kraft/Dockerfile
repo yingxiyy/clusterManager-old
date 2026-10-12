@@ -1,9 +1,9 @@
 # ==============================================================================
-# Dockerfile: Apache Kafka with KRaft mode running on Java 1.8 (OpenJDK 8)
+# Dockerfile: Apache Kafka 4.0.1 with KRaft mode running on Java 21 LTS
 # ==============================================================================
-FROM eclipse-temurin:8-jre-focal
+FROM eclipse-temurin:21-jre-jammy
 
-ENV KAFKA_VERSION=3.7.2 \
+ENV KAFKA_VERSION=4.0.1 \
     SCALA_VERSION=2.13 \
     KAFKA_HOME=/opt/kafka \
     PATH=$PATH:/opt/kafka/bin
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     awscli \
     && rm -rf /var/lib/apt/lists/*
 
-# Download Apache Kafka 3.7.2 (KRaft supported, Java 8 runtime compatible)
+# Download Apache Kafka 4.0.1 (KRaft supported, Java 21 LTS runtime native)
 RUN set -ex; \
     mkdir -p ${KAFKA_HOME}; \
     curl -fsSL "https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz" \

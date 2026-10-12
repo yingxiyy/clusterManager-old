@@ -1,9 +1,9 @@
 # ==============================================================================
-# Dockerfile: Apache Flink 1.9.3 on Java 1.8 (OpenJDK 8) with S3 Plugin
+# Dockerfile: Apache Flink 2.0.0 on Java 21 LTS (OpenJDK 21) with S3 Plugin
 # ==============================================================================
-FROM eclipse-temurin:8-jre-focal
+FROM eclipse-temurin:21-jre-jammy
 
-ENV FLINK_VERSION=1.9.3 \
+ENV FLINK_VERSION=2.0.0 \
     SCALA_VERSION=2.12 \
     FLINK_HOME=/opt/flink \
     PATH=$PATH:/opt/flink/bin

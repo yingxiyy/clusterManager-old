@@ -6,14 +6,28 @@
 
 ## 目录
 0. [集群所有服务初始安装账号与密码配置清单 (强制认证)](#0-集群所有服务初始安装账号与密码配置清单-强制认证)
-1. [集群网络与机器规划](#1-集群网络与机器规划)
+1. [【完整手册】一步步完成所有基础组件的安装过程 (3-Master K8s 与全套分布式中间件实战指南)](#1-完整手册一步步完成所有基础组件的安装过程-3-master-k8s-与全套分布式中间件实战指南)
+   - 1.1 [基础组件全局规划与全套组件矩阵表](#11-基础组件全局规划与全套组件矩阵表)
+   - 1.2 [节点网络拓扑规划 (VIP、3 Master 兼任 Worker、当前管控环境)](#12-节点网络拓扑规划)
+   - 1.3 [第一步：操作系统优化与系统级底座基础组件安装 (Swap/内核/网络)](#13-第一步操作系统优化与系统级底座基础组件安装)
+   - 1.4 [第二步：容器运行时底座安装与配置 (Containerd + SystemdCgroup)](#14-第二步容器运行时底座安装与配置)
+   - 1.5 [第三步：高可用控制面入口基础组件配置 (Keepalived VIP + HAProxy)](#15-第三步高可用控制面入口基础组件配置)
+   - 1.6 [第四步：Kubernetes 核心底座安装与 3-Master 集群初始化 (kubeadm/CNI/污点消除)](#16-第四步kubernetes-核心底座安装与-3-master-集群初始化)
+   - 1.7 [第五步：集群管控工具基础组件安装 (Helm 3 与 k9s 终端控制台)](#17-第五步集群管控工具基础组件安装)
+   - 1.8 [第六步：全栈 Java 21 LTS 基础开发与运行时环境就绪](#18-第六步全栈-java-21-lts-基础开发与运行时环境就绪)
+   - 1.9 [第七步：打通“我的这一个管控环境”与 3-Master K8s 集群](#19-第七步打通我的这一个管控环境与-3-master-k8s-集群)
+   - 1.10 [第八步：全套 8 大分布式基础组件分步安装实战 (MinIO/ZK/Kafka/MySQL/Mongo/Redis/Flink/Nginx)](#110-第八步全套-8-大分布式基础组件分步安装实战)
+   - 1.11 [第九步：所有基础组件健康检查、冒烟测试与端口总汇](#111-第九步所有基础组件健康检查冒烟测试与端口总汇)
+   - 1.12 [第十步：外部 Git (GitHub / GitLab / Gitee) 网络访问与拉取指南](#112-第十步外部-git-github--gitlab--gitee-网络访问与拉取指南)
 2. [节点环境初始化与 Kubernetes (k8s) & k9s 安装](#2-节点环境初始化与-kubernetes-k8s--k9s-安装)
-3. [Master 节点高可用 (Keepalived + HAProxy)](#3-master-节点高可用-keepalived--haproxy)
-4. [初始化 3 台 Master/Worker 节点 (kubeadm init & join)](#4-初始化-3-台-masterworker-节点)
-5. [Worker 节点扩展流程 (物理机/VM 手工执行 CLI)](#5-worker-节点扩展流程)
-6. [第三方应用集群部署 (Helm + Docker Hub)](#6-第三方应用集群部署)
-7. [后端执行模式配置 (Simulator 模式 vs 真实宿主机执行)](#7-后端执行模式配置-simulator-模式-vs-真实宿主机执行)
-8. [3 台物理主机下 MySQL & MongoDB 持久化存储与 S3 冷备份实战](#8-3-台物理主机下-mysql--mongodb-持久化存储与-s3-冷备份实战-方案-3---当前生效标准)
+3. [Master 节点高可用 (Keepalived + HAProxy) 深度配置](#3-master-节点高可用-keepalived--haproxy-深度配置)
+4. [初始化 3 台 Master/Worker 节点 (kubeadm init & join)](#4-初始化-3-台-masterworker-节点-kubeadm-init--join)
+5. [Worker 节点扩展流程 (物理机/VM 手工执行 CLI)](#5-worker-节点扩展流程-物理机vm-手工执行-cli)
+6. [第三方应用集群部署 (Helm + Docker Hub, 全栈 Java 21 LTS)](#6-第三方应用集群部署-helm--docker-hub-全栈-java-21-lts)
+7. [Pod 与组件弹性伸缩 (后端自动执行 vs CLI)](#7-pod-与组件弹性伸缩-后端自动执行-vs-cli)
+8. [后端执行模式配置 (Simulator 模式 vs 真实宿主机执行)](#8-后端执行模式配置-simulator-模式-vs-真实宿主机执行)
+9. [3 台物理主机下 MySQL & MongoDB 持久化存储与 S3 冷备份实战](#9-3-台物理主机下-mysql--mongodb-持久化存储与-s3-冷备份实战-方案-3---当前生效标准)
+10. [Nginx 前端入口网关配置与优化实战 (代码放 Docker 外面免重构镜像)](#10-nginx-前端入口网关配置与优化实战-代码放-docker-外面免重构镜像)
 
 ---
 
@@ -356,21 +370,546 @@ ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 
 ---
 
-## 1. 集群网络与机器规划
+## 1. 【完整手册】一步步完成所有基础组件的安装过程 (3-Master K8s 与全套分布式中间件实战指南)
 
-| 主机名 | IP 地址 | 角色 | 说明 |
-| :--- | :--- | :--- | :--- |
-| **VIP (虚拟IP)** | `192.168.1.100` | 控制面高可用入口 | Keepalived 漂移 VIP，HAProxy 监听 6443 |
-| **k8s-master-01** | `192.168.1.101` | Master 1 + Worker | 运行 etcd、kube-apiserver，同时调度业务 Pod |
-| **k8s-master-02** | `192.168.1.102` | Master 2 + Worker | 运行 etcd、kube-apiserver，同时调度业务 Pod |
-| **k8s-master-03** | `192.168.1.103` | Master 3 + Worker | 运行 etcd、kube-apiserver，同时调度业务 Pod |
-| **k8s-worker-04+**| `192.168.1.104+`| 扩展 Worker | 纯 Worker 节点，弹性扩容 |
-
-> **关键机制**：默认 Kubernetes 会在 Master 上打污点（Taint）。我们在初始化完成后会执行 `kubectl taint nodes --all node-role.kubernetes.io/control-plane-`，使得 **3 台 Master 机器同时充当 Worker 节点**，充分利用 3 台机器的 CPU、内存和磁盘。
+> **本节定位**：这是一份**零歧义、可完全复制粘贴、一步步落地**的生产级安装手册。涵盖从裸机/虚拟机环境初始化、Containerd 运行时、Keepalived+HAProxy 高可用入口、3-Master Kubernetes 集群、Helm 3 与 k9s 工具，到打通“当前管控环境”，再到全套 8 大分布式中间件（MinIO S3、ZooKeeper、Kafka KRaft、MySQL 8.4、MongoDB 8.0、Redis 哨兵、Flink 2.0、Nginx 网关，统一基于 **Java 21 LTS**）的分步安装、配置与联通验证。
 
 ---
 
-### 1.1 外部 Git (GitHub / GitLab / Gitee) 网络访问与拉取指南
+### 1.1 基础组件全局规划与全套组件矩阵表
+
+在开始安装前，请确认所有基础组件的版本规格与技术指标：
+
+| 层次类型 | 基础组件名称 | 生产版本 | 运行时/依赖 | 关键端口 | 职责定位与高可用机制 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **系统底层** | **Containerd** | 1.7.x / 最新 | SystemdCgroup | unix:///run/containerd/containerd.sock | 业界标准容器运行时，取代 Docker-shim |
+| **网络网关** | **Keepalived** | 2.2.x+ | VRRP 协议 | 组播 / 心跳 | 提供高可用浮动 VIP (`192.168.1.100`)，主宕自漂 |
+| **负载均衡** | **HAProxy** | 2.8.x+ | 四层 TCP 转发 | `6443` | 负责分发 API Server 请求到 3 台 Master |
+| **容器编排** | **Kubernetes** | v1.29.6+ | Go 1.22 / CRI | `6443`, `10250` | 3 节点控制面 + 兼任 Worker 计算/存储节点 |
+| **容器网络** | **Flannel / Calico** | 最新稳定版 | VXLAN / BGP | UDP 8472 / 4789 | 提供跨物理主机的 Pod 虚拟平坦互联网络 |
+| **管理工具** | **Helm 3** | v3.14.x+ | Go 二进制 | - | 云原生组件包管理与配置参数驱动工具 |
+| **管理工具** | **k9s** | v0.32.x+ | 终端图形界面 | - | Linux 终端全屏实时监控看板与秒级排障 |
+| **核心运行时**| **Java Runtime** | **Java 21 LTS** | Eclipse Temurin | - | 全栈统一现代化 LTS 运行底座 (Kafka/ZK/Flink) |
+| **对象存储** | **MinIO S3** | 最新分布式版 | 纯分布式 4 驱动 | `9000` (API), `9001` (Web) | 全局中央对象存储，承担 Flink 状态与冷备归档 |
+| **协调仲裁** | **Apache ZooKeeper**| 3.9.3 | Java 21 LTS | `2181` (客户端), `2888/3888` | 3 节点 Quorum 仲裁集群 (SASL Digest-MD5 认证) |
+| **消息中间件**| **Apache Kafka** | 4.0.1 (KRaft) | Java 21 原生 | `9092` (业务), `9093` (控制器) | 3 节点无 ZooKeeper 原生 KRaft 分布式消息流 |
+| **关系型数据**| **MySQL** | 8.4.6 LTS | C++ / InnoDB | `3306` | 1 主 2 从 GTID 复制 + S3 定时冷备份 sidecar |
+| **文档型数据**| **MongoDB** | 8.0.9 | C++ / WiredTiger | `27017` | 3 节点副本集 (`rs0`) + Keyfile 内部鉴权 + SCRAM |
+| **内存与哨兵**| **Redis** | 6.2.6-alpine | C / 内存快照 | `6379` (数据), `26379` (哨兵) | 1 主 2 从 + 3 哨兵仲裁，微秒级缓存与故障切换 |
+| **流式计算** | **Apache Flink** | 2.0.0 | Java 21 LTS | `8081` (Web), `6123` (RPC) | 1 JobManager + 3 TaskManager，S3 状态后端 |
+| **接入网关** | **Nginx** | 1.27-alpine | 高性能 C | `8088` (业务), `30088` (NodePort) | 挂载宿主机 `/data/frontend/dist` 实现免重构更新 |
+
+---
+
+### 1.2 节点网络拓扑规划
+
+本架构以 **3 台物理机 / 虚拟机** 构建高可用控制面与计算存储一体化架构，外加“当前管控机”进行联通：
+
+```
++----------------------------------------------------------------------------------------------------+
+|                               【当前管控环境 / 本开发与部署机】                                       |
+|                                                                                                    |
+|  • Web 运维管理控制台 (React 19 SPA)                • 后端引擎 (Express: /api/k8s/...)             |
+|  • 凭证中心 (credentials.env & custom.yaml)        • Helm 部署套件 (helm/ & scripts/)              |
+|  • 运行模式: SIMULATOR=false (直连集群下发)          • 访问凭据: ~/.kube/config (指向 VIP:6443)      |
++--------------------------------------------------+-------------------------------------------------+
+                                                   |
+                                [mTLS 6443 双向加密认证 / Helm 交付 / Pod 监控]
+                                                   |
+                                                   v
++----------------------------------------------------------------------------------------------------+
+|                          【高可用虚拟浮动入口 VIP: 192.168.1.100】                                  |
+|                    Keepalived VRRP 心跳漂移 (自动主备切换) + HAProxy 6443 轮询负载均衡                  |
++---------------------------+------------------------------+-----------------------------------------+
+                            |                              |                                         |
+                            v                              v                                         v
+             +------------------------------+ +------------------------------+ +------------------------------+
+             |        k8s-master-01         | |        k8s-master-02         | |        k8s-master-03         |
+             |        (192.168.1.101)       | |        (192.168.1.102)       | |        (192.168.1.103)       |
+             +------------------------------+ +------------------------------+ +------------------------------+
+             |  • Keepalived (Master)       | |  • Keepalived (Backup)       | |  • Keepalived (Backup)       |
+             |  • HAProxy (6443 监听)       | |  • HAProxy (6443 监听)       | |  • HAProxy (6443 监听)       |
+             |  • kube-apiserver / etcd-0   | |  • kube-apiserver / etcd-1   | |  • kube-apiserver / etcd-2   |
+             |  • kube-scheduler / cm       | |  • kube-scheduler / cm       | |  • kube-scheduler / cm       |
+             +------------------------------+ +------------------------------+ +------------------------------+
+             |   【解除 Taint 兼任 Worker】  | |   【解除 Taint 兼任 Worker】  | |   【解除 Taint 兼任 Worker】  |
+             |  • Mongo Pod-0 (Primary)     | |  • Mongo Pod-1 (Secondary)   | |  • Mongo Pod-2 (Secondary)   |
+             |  • Kafka 4.0.1 (KRaft-0)     | |  • Kafka 4.0.1 (KRaft-1)     | |  • Kafka 4.0.1 (KRaft-2)     |
+             |  • ZK 3.9.3 (Server 1)       | |  • ZK 3.9.3 (Server 2)       | |  • ZK 3.9.3 (Server 3)       |
+             |  • MySQL 8.4 (Leader)        | |  • MySQL 8.4 (Follower 1)    | |  • MySQL 8.4 (Follower 2)    |
+             |  • Redis 6.2 (Master)        | |  • Redis 6.2 (Slave 1)       | |  • Redis 6.2 (Slave 2)       |
+             |  • Flink 2.0 (JobManager)    | |  • Flink 2.0 (TaskManager 1) | |  • Flink 2.0 (TaskManager 2) |
+             |  • MinIO S3 (Drive 1)        | |  • MinIO S3 (Drive 2)        | |  • MinIO S3 (Drive 3/4)      |
+             |  • Nginx 网关 (Pod-0)        | |  • Nginx 网关 (Pod-1)        | |  • Nginx 网关 (Pod-2)        |
+             +------------------------------+ +------------------------------+ +------------------------------+
+```
+
+---
+
+### 1.3 第一步：操作系统优化与系统级底座基础组件安装
+
+> **执行目标节点**：所有 3 台 Master 机器（`192.168.1.101`, `192.168.1.102`, `192.168.1.103`）。
+
+#### 1. 禁用 Swap 分区（Kubernetes 强依赖）
+```bash
+# 立即关闭当前 swap
+sudo swapoff -a
+
+# 永久从 fstab 中注销 swap 分区
+sudo sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+```
+
+#### 2. 加载 Linux 内核网络模块
+```bash
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+```
+
+#### 3. 配置内核 Sysctl 桥接网络与 IPv4 转发参数
+```bash
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+# 使内核参数立即生效
+sudo sysctl --system
+```
+
+#### 4. 配置 Chrony 时间同步（分布式 etcd / Kafka / Mongo 强依赖时间一致性）
+```bash
+sudo apt-get update && sudo apt-get install -y chrony curl wget iptables ebtables ethtool socat conntrack
+sudo systemctl enable --now chrony
+chronyc tracking
+```
+
+---
+
+### 1.4 第二步：容器运行时底座安装与配置 (Containerd + SystemdCgroup)
+
+> **执行目标节点**：所有 3 台 Master 机器。
+
+```bash
+# 1. 安装 containerd 软件包
+sudo apt-get install -y containerd
+
+# 2. 生成默认配置文件
+sudo mkdir -p /etc/containerd
+sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+
+# 3. 关键配置：将 cgroup 驱动修改为 systemd (K8s 强要求)
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+
+# 4. (国内网络可选) 配置 pause 基础镜像加速
+sudo sed -i 's#sandbox_image = "registry.k8s.io/pause:3.8"#sandbox_image = "registry.aliyuncs.com/google_containers/pause:3.9"#g' /etc/containerd/config.toml
+
+# 5. 重启并设置开机自启
+sudo systemctl daemon-reload
+sudo systemctl enable --now containerd
+sudo systemctl restart containerd
+
+# 6. 验证运行时状态
+sudo crictl info | grep -i 'runtimeReady'
+```
+
+---
+
+### 1.5 第三步：高可用控制面入口基础组件配置 (Keepalived VIP + HAProxy)
+
+为保障 3 台 Master 节点的 API Server（6443 端口）在任意一台主机硬件宕机时不中断，需在 3 台 Master 上配置 Keepalived 漂移 VIP 与 HAProxy 负载均衡。
+
+> **自动化脚本快速执行（推荐）**：
+```bash
+# 在 3 台 Master 分别运行：
+sudo ./scripts/k8s-ha-setup/setup-haproxy-keepalived.sh 192.168.1.100 auto 192.168.1.101 192.168.1.102 192.168.1.103
+```
+
+> **手动配置分步说明**：
+
+#### 1. 安装 Keepalived 与 HAProxy
+```bash
+sudo apt-get install -y keepalived haproxy
+```
+
+#### 2. 配置 HAProxy (`/etc/haproxy/haproxy.cfg`)
+在 3 台机器上写入相同的反代负载均衡配置：
+```haproxy
+global
+    log /dev/log local0
+    maxconn 4000
+    daemon
+
+defaults
+    mode tcp
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+frontend k8s_apiserver_frontend
+    bind 0.0.0.0:6443
+    mode tcp
+    default_backend k8s_apiserver_backend
+
+backend k8s_apiserver_backend
+    mode tcp
+    balance roundrobin
+    option tcp-check
+    server k8s-master-01 192.168.1.101:6443 check fall 3 rise 2
+    server k8s-master-02 192.168.1.102:6443 check fall 3 rise 2
+    server k8s-master-03 192.168.1.103:6443 check fall 3 rise 2
+```
+
+#### 3. 配置 Keepalived (`/etc/keepalived/keepalived.conf`)
+* **在 Master 01 (`192.168.1.101`) 上设置为 MASTER，priority 101**：
+```keepalived
+vrrp_script check_haproxy {
+    script "killall -0 haproxy"
+    interval 2
+    weight 2
+}
+
+vrrp_instance VI_1 {
+    state MASTER
+    interface eth0          # 或通过 ip route get 8.8.8.8 探测的实际网卡
+    virtual_router_id 51
+    priority 101
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass K8sHaVipPasswd123
+    }
+    virtual_ipaddress {
+        192.168.1.100/24
+    }
+    track_script {
+        check_haproxy
+    }
+}
+```
+* **在 Master 02 (`192.168.1.102`) 与 Master 03 (`192.168.1.103`) 上设置为 BACKUP，priority 分别为 100 与 99**。
+
+#### 4. 启动服务并验证 VIP 绑定
+```bash
+sudo systemctl enable --now haproxy keepalived
+sudo systemctl restart haproxy keepalived
+
+# 在 Master 01 检查 VIP 绑定
+ip addr show | grep 192.168.1.100
+```
+如看到 `inet 192.168.1.100/24 scope global secondary`，说明浮动 VIP 已就绪。
+
+---
+
+### 1.6 第四步：Kubernetes 核心底座安装与 3-Master 集群初始化 (kubeadm/CNI/污点消除)
+
+#### 1. 安装 Kubernetes 基础工具包 (在 3 台 Master 执行)
+```bash
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+sudo systemctl enable --now kubelet
+```
+
+#### 2. 在 Master 01 (`192.168.1.101`) 初始化控制面高可用集群
+```bash
+sudo ./scripts/k8s-ha-setup/init-masters.sh 192.168.1.100
+```
+或直接通过命令行初始化：
+```bash
+sudo kubeadm init \
+  --control-plane-endpoint "192.168.1.100:6443" \
+  --upload-certs \
+  --pod-network-cidr=10.244.0.0/16 \
+  --image-repository=registry.aliyuncs.com/google_containers
+
+# 自动建立本地凭据
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+# 安装 Flannel 容器 CNI 跨主机网络
+kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+```
+
+#### 3. 核心关键步：消除 Master 污点（兼任 Worker，物尽其用）
+中小型集群中 3 台机器需要同时作为数据计算与存储节点：
+```bash
+# 解除控制面污点，允许第三方数据库和 Pod 在 3 台 Master 上调度
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
+```
+
+#### 4. 将 Master 02 与 Master 03 加入控制面
+在 Master 01 初始化完成时终端打印出的控制面加入命令，复制到 Master 02 与 Master 03 终端执行：
+```bash
+sudo kubeadm join 192.168.1.100:6443 \
+  --token <YOUR_TOKEN> \
+  --discovery-token-ca-cert-hash sha256:<YOUR_HASH> \
+  --control-plane --certificate-key <YOUR_CERT_KEY>
+```
+
+#### 5. 验证 3-Master 集群状态
+```bash
+kubectl get nodes -o wide
+```
+预期输出：3 个节点均处于 **`Ready`** 状态，且各节点的 INTERNAL-IP 分别为 `.101`, `.102`, `.103`。
+
+---
+
+### 1.7 第五步：集群管控工具基础组件安装 (Helm 3 与 k9s 终端控制台)
+
+#### 1. 安装 Helm 3 客户端
+```bash
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm version
+```
+
+#### 2. 安装 k9s 终端全屏图形控制台
+```bash
+curl -sS -L https://github.com/derailed/k9s/releases/download/v0.32.4/k9s_Linux_amd64.tar.gz | sudo tar -xz -C /usr/local/bin k9s
+sudo chmod +x /usr/local/bin/k9s
+k9s version
+```
+
+---
+
+### 1.8 第六步：全栈 Java 21 LTS 基础开发与运行时环境就绪
+
+本项目所有大数据与消息组件（Kafka 4.0.1、ZooKeeper 3.9.3、Flink 2.0.0）均基于 **Java 21 LTS** 现代化运行时。
+
+在机器上安装 Java 21 LTS：
+```bash
+# Ubuntu / Debian 安装 Eclipse Temurin OpenJDK 21
+wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | sudo gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg --yes
+echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/adoptium.list
+sudo apt-get update && sudo apt-get install -y temurin-21-jdk
+
+# 验证版本
+java -version
+```
+输出应包含：`openjdk version "21.0.x"`。
+
+---
+
+### 1.9 第七步：打通“我的这一个管控环境”与 3-Master K8s 集群
+
+所谓**“我的这一个管控环境”**，就是当前运行本 CloudCluster Web 控制台与管理脚本的机器（宿主机或开发者管理机）。
+
+#### 1. 验证管控环境到高可用 VIP 的连通性
+```bash
+# 验证网络层 ping 通
+ping -c 3 192.168.1.100
+
+# 验证 API Server 6443 握手 (返回 401/403 即表示链路畅通)
+curl -k https://192.168.1.100:6443/version
+```
+
+#### 2. 同步集群凭证 (Kubeconfig) 到当前环境
+```bash
+mkdir -p ~/.kube
+scp root@192.168.1.101:/etc/kubernetes/admin.conf ~/.kube/config
+chmod 600 ~/.kube/config
+
+# 确保配置文件中的服务器地址统一指向 VIP: 192.168.1.100:6443
+sed -i 's#server: https://.*:6443#server: https://192.168.1.100:6443#g' ~/.kube/config
+
+# 验证测试
+kubectl get nodes
+```
+
+#### 3. 切换当前环境为 Real Host (真实集群生效模式)
+在项目根目录下配置 `.env`：
+```bash
+echo "SIMULATOR=false" >> .env
+```
+或在 Web 界面 Header 处点击切换为 **`[⚡ Real Host (Live)]`**。
+
+#### 4. 生成强密码体系文件
+```bash
+bash scripts/init-credentials.sh
+```
+该命令会自动生成 `credentials.env` 并注入至 `helm/custom-credentials.yaml`，保障全栈强制认证。
+
+---
+
+### 1.10 第八步：全套 8 大分布式基础组件分步安装实战
+
+您可以选择 **方式 A（Helm 一键批量部署）** 或 **方式 B（逐个基础组件分步部署）**：
+
+#### 方式 A：Helm 一键自动化批量交付（最推荐）
+```bash
+chmod +x ./scripts/helm-install.sh
+./scripts/helm-install.sh data-platform cloudcluster helm/values.yaml
+```
+
+---
+
+#### 方式 B：各基础组件分步独立部署与配置详解
+
+##### 1. 基础组件：MinIO S3 分布式对象存储集群 (4 副本)
+* **作用**：全平台中央对象存储，承担 Flink Checkpoints 状态快照与 MySQL/MongoDB 定时冷备文件存储。
+* **部署命令**：
+  ```bash
+  helm upgrade --install minio ./helm \
+    --namespace data-platform --create-namespace \
+    --set flink.enabled=false --set kafka.enabled=false --set mysql.enabled=false \
+    --set mongodb.enabled=false --set redis.enabled=false --set zookeeper.enabled=false \
+    --set nginx.enabled=false
+  ```
+* **存储桶初始化与客户端配置**：
+  ```bash
+  # 安装 mc 客户端并配置别名
+  curl https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+  chmod +x /usr/local/bin/mc
+  mc alias set myminio http://192.168.1.100:9000 minioAdmin minioAdminPassword123
+
+  # 创建基础存储桶
+  mc mb myminio/flink-checkpoints || true
+  mc mb myminio/mysql-backups || true
+  mc mb myminio/mongodb-backups || true
+  mc ls myminio/
+  ```
+
+##### 2. 基础组件：Apache ZooKeeper 3.9.3 仲裁集群 (3 节点, Java 21 LTS)
+* **作用**：提供微服务注册发现与分布式协调锁服务，默认启用 SASL Digest-MD5 安全认证。
+* **部署与验证**：
+  ```bash
+  # 验证 ZooKeeper 3 个 Pod 运行状态
+  kubectl get pods -n data-platform -l app=zookeeper -o wide
+
+  # 进入容器验证节点状态
+  kubectl exec -it -n data-platform zookeeper-0 -- zkServer.sh status
+  ```
+  输出示例：Mode 为 `follower` 或 `leader`，3 节点自动形成 Quorum。
+
+##### 3. 基础组件：Apache Kafka 4.0.1 分布式消息队列 (KRaft 模式, Java 21 原生)
+* **作用**：高吞吐事件流消息总线，彻底摒弃传统 ZooKeeper 依赖，采用现代化的 KRaft 协议共识。
+* **部署与主题创建**：
+  ```bash
+  # 查看 Kafka 3 节点 Pod
+  kubectl get pods -n data-platform -l app=kafka -o wide
+
+  # 创建业务主题 (3 分区 3 副本高可用)
+  kubectl exec -it -n data-platform kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 \
+    --command-config /opt/kafka/config/client.properties \
+    --create --topic telemetry-events --partitions 3 --replication-factor 3
+
+  # 列出主题验证
+  kubectl exec -it -n data-platform kafka-0 -- /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server localhost:9092 \
+    --command-config /opt/kafka/config/client.properties --list
+  ```
+
+##### 4. 基础组件：MySQL 8.4.6 LTS 高可用主从集群 (GTID 复制 + S3 备份 sidecar)
+* **作用**：高可靠关系型事务数据库，包含 1 主 2 从读写分离结构及通配主机用户权限。
+* **验证主从同步状态**：
+  ```bash
+  # 登录 MySQL 主节点验证 GTID
+  kubectl exec -it -n data-platform mysql-0 -- mysql -uroot -pmysqlRootPassword123 -e "SHOW MASTER STATUS\G"
+
+  # 登录从节点验证 Slave 复制线程
+  kubectl exec -it -n data-platform mysql-1 -- mysql -uroot -pmysqlRootPassword123 -e "SHOW REPLICA STATUS\G"
+  ```
+  预期输出：`Replica_IO_Running: Yes` 与 `Replica_SQL_Running: Yes`。
+
+##### 5. 基础组件：MongoDB 8.0.9 副本集集群 (3 节点副本集 rs0)
+* **作用**：海量文档与灵活数据模型存储，配置 Keyfile 内部安全签名与 SCRAM-SHA-256 用户认证。
+* **验证副本集状态**：
+  ```bash
+  kubectl exec -it -n data-platform mongodb-0 -- mongosh -u admin -p mongoAdminPassword123 --authenticationDatabase admin --eval "rs.status().members.map(m => ({name: m.name, stateStr: m.stateStr}))"
+  ```
+  预期输出：1 个 `PRIMARY` 与 2 个 `SECONDARY`。
+
+##### 6. 基础组件：Redis 6.2.6 + Sentinel 哨兵缓存集群 (1 主 2 从 + 3 哨兵)
+* **作用**：微秒级分布式缓存与 Session 存储，哨兵集群负责自动故障转移与拓扑监控。
+* **验证主从与哨兵监控**：
+  ```bash
+  # 验证 Redis 主从角色
+  kubectl exec -it -n data-platform redis-0 -- redis-cli -a redisAuthPassword123 info replication
+
+  # 验证 Sentinel 哨兵仲裁状态
+  kubectl exec -it -n data-platform redis-sentinel-0 -- redis-cli -p 26379 sentinel masters
+  ```
+
+##### 7. 基础组件：Apache Flink 2.0.0 实时流计算集群 (Java 21 LTS + MinIO S3 Checkpoint)
+* **作用**：大规模流批一体计算引擎，1 JobManager + 3 TaskManager 弹性槽位，检查点直写 MinIO S3。
+* **验证状态**：
+  ```bash
+  # 检查 Flink 集群 Pods
+  kubectl get pods -n data-platform -l app=flink -o wide
+
+  # 查看 Flink Web 概览 API (HTTP Basic 鉴权)
+  curl -u flinkAdmin:flinkAdminPassword123 http://192.168.1.100:8081/overview
+  ```
+
+##### 8. 基础组件：Nginx 1.27 前端接入与反代网关 (挂载宿主机免重构)
+* **作用**：3 副本高可用反向代理，静态前端资源直接挂载宿主机 `/data/frontend/dist`，实现热更新与动静分流。
+* **宿主机目录初始化与验证**：
+  ```bash
+  # 在 3 台 Master 宿主机上准备前端挂载目录
+  sudo mkdir -p /data/frontend/dist /data/frontend/logs
+  sudo chmod -R 755 /data/frontend
+
+  # 检查 Nginx Pod 状态与 NodePort 端口暴露
+  kubectl get svc -n data-platform nginx-service
+  ```
+
+---
+
+### 1.11 第九步：所有基础组件健康检查、冒烟测试与端口总汇
+
+在完成全部安装后，执行以下标准巡检测试：
+
+#### 1. 全集群 Pod 状态全局概览
+```bash
+kubectl get pods -n data-platform -o wide
+```
+**合格标准**：所有 Pod 处于 `Running` 状态，且副本均匀分布在 `k8s-master-01`, `k8s-master-02`, `k8s-master-03` 上。
+
+#### 2. 一键冒烟测试命令清单 (从当前环境执行)
+```bash
+echo "=== 1. 测试 MinIO S3 API (9000) ==="
+curl -s -I http://192.168.1.100:9000/minio/health/live | head -n 1
+
+echo "=== 2. 测试 Flink 仪表盘 (8081) ==="
+curl -s -u flinkAdmin:flinkAdminPassword123 http://192.168.1.100:8081/jobmanager/config | head -n 1
+
+echo "=== 3. 测试 MySQL 8.4 连接 (3306) ==="
+mysql -h 192.168.1.100 -P 3306 -u app_user -pmysqlAppPassword123 -e "SELECT @@version, @@gtid_mode;"
+
+echo "=== 4. 测试 MongoDB 8.0 副本集 (27017) ==="
+mongosh "mongodb://mongo_app:mongoAppPassword123@192.168.1.100:27017/appdb?replicaSet=rs0" --eval "db.runCommand({ping: 1})"
+
+echo "=== 5. 测试 Redis 6.2 读写 (6379) ==="
+redis-cli -h 192.168.1.100 -p 6379 -a redisAuthPassword123 ping
+
+echo "=== 6. 测试 Nginx 前端 Web 访问 (30088) ==="
+curl -s -I http://192.168.1.100:30088/ | head -n 1
+```
+
+#### 3. 全套组件对外访问地址速查：
+* **业务前端系统**：`http://192.168.1.100:30088`
+* **MinIO S3 控制台**：`http://192.168.1.100:9001` (账号: `minioAdmin` / `minioAdminPassword123`)
+* **Flink 管理看板**：`http://192.168.1.100:8081` (账号: `flinkAdmin` / `flinkAdminPassword123`)
+* **Kafka 业务连接串**：`192.168.1.100:9092` (SASL_PLAINTEXT: `app_user` / `kafkaAppPassword123`)
+* **MySQL 业务连接串**：`192.168.1.100:3306` (账号: `app_user` / `mysqlAppPassword123`)
+* **MongoDB 连接串**：`mongodb://mongo_app:mongoAppPassword123@192.168.1.100:27017/appdb?replicaSet=rs0`
+* **Redis 缓存连接串**：`redis://:redisAuthPassword123@192.168.1.100:6379/0`
+* **k9s 终端实时监控**：在终端直接运行 `k9s -n data-platform`
+
+---
+
+### 1.12 第十步：外部 Git (GitHub / GitLab / Gitee) 网络访问与拉取指南
 
 在物理机部署或容器运行过程中，经常需要拉取外部 Git 仓库的代码、Helm Chart 或配置文件。
 
@@ -578,9 +1117,9 @@ systemctl status haproxy keepalived
 
 ---
 
-## 3. 初始化 3 台 Master/Worker 节点
+## 4. 初始化 3 台 Master/Worker 节点 (kubeadm init & join)
 
-### 步骤 3.1：在 Master 1 (`192.168.1.101`) 初始化控制面
+### 步骤 4.1：在 Master 1 (`192.168.1.101`) 初始化控制面
 ```bash
 sudo ./scripts/k8s-ha-setup/init-masters.sh 192.168.1.100
 ```
@@ -594,7 +1133,7 @@ sudo ./scripts/k8s-ha-setup/init-masters.sh 192.168.1.100
 - **Master 加入命令**（带 `--control-plane` 与 `--certificate-key`）。
 - **Worker 加入命令**（普通 Token）。
 
-### 步骤 3.2：将 Master 2 与 Master 3 加入控制面
+### 步骤 4.2：将 Master 2 与 Master 3 加入控制面
 在 `192.168.1.102` 与 `192.168.1.103` 上分别执行 Master 加入命令：
 ```bash
 sudo kubeadm join 192.168.1.100:6443 \
@@ -611,7 +1150,7 @@ kubectl get nodes -o wide
 
 ---
 
-## 4. Worker 节点扩展流程 (物理机/VM 手工执行 CLI)
+## 5. Worker 节点扩展流程 (物理机/VM 手工执行 CLI)
 
 因为 Worker 节点可能是新采购的物理服务器或新开的虚拟机，**必须在目标机器上人工/终端执行**。
 
@@ -643,7 +1182,7 @@ kubectl get nodes
 
 ---
 
-## 5. 第三方应用集群部署 (Helm + Docker Hub)
+## 6. 第三方应用集群部署 (Helm + Docker Hub, 全栈 Java 21 LTS)
 
 本项目已将所有第三方组件镜像直接对接 **Global Docker Hub 官方镜像**，无需自行在本地构建 Dockerfile 即可启动：
 
@@ -673,7 +1212,7 @@ helm upgrade --install cloudcluster ./helm \
 
 ---
 
-## 6. Pod 与组件弹性伸缩 (后端自动执行 vs CLI)
+## 7. Pod 与组件弹性伸缩 (后端自动执行 vs CLI)
 
 针对 Pod 级别组件（如 Flink TaskManager、Kafka 节点、Mongo 副本数）：
 
@@ -697,7 +1236,7 @@ helm upgrade cloudcluster ./helm -n data-platform --reuse-values --set kafka.rep
 
 ---
 
-## 7. 后端执行模式配置 (Simulator 模式 vs 真实宿主机执行)
+## 8. 后端执行模式配置 (Simulator 模式 vs 真实宿主机执行)
 
 为防止开发/演示阶段误操作真实生产集群，系统内置了 `SIMULATOR` 配置开关：
 
@@ -720,7 +1259,7 @@ helm upgrade cloudcluster ./helm -n data-platform --reuse-values --set kafka.rep
 
 ---
 
-## 8. 3 台物理主机下 MySQL & MongoDB 持久化存储与 S3 冷备份实战 (方案 3 - 当前生效标准)
+## 9. 3 台物理主机下 MySQL & MongoDB 持久化存储与 S3 冷备份实战 (方案 3 - 当前生效标准)
 
 ### 核心结论：直接挂载 S3 放数据目录不可行，但采用“本地盘 + S3 冷备份”是黄金标准！
 
@@ -796,14 +1335,16 @@ kubectl logs -n data-platform -l app=mysql-backup --tail=50
 
 ---
 
-## 9. Nginx 前端入口网关配置与优化实战 (代码放 Docker 外面免重构镜像)
+## 10. Nginx 前端入口网关配置与优化实战 (代码放 Docker 外面免重构镜像)
 
 ### 9.1 设计初衷与核心价值
 传统 Docker 化前端每次代码改动都需要：`npm run build` -> `docker build` -> `docker push` -> `kubectl rollout restart`，发布链路长、镜像仓库冗余、更新延迟高。
 **本项目黄金落地标准**：
-1. **静态代码放在宿主机外面**：3 台物理机通过统一路径（如 `/data/frontend/dist/`）存放前端打包产物；
-2. **K8s HostPath 热映射**：Nginx 容器只负责高性能 Web 引擎和反代，通过 Volume 挂载宿主机 `/data/frontend/dist`；
-3. **零重构镜像、秒级热更新**：前端 CI/CD 构建完成后，仅需 `rsync` 或 `scp` 覆盖宿主机目录，用户浏览器刷新即可即刻加载新版本！
+1. **优先部署在 3 个 Master 节点**：通过 Kubernetes `tolerations` 容忍控制面污点，配合 `podAntiAffinity` 优先在 3 台 Master 物理机各运行 1 个 Pod，直通 Keepalived VIP `192.168.1.100`；
+2. **后期支持在 Worker 节点自由扩展**：集群加入新 Worker 主机后，无需修改架构，直接 `kubectl scale deployment nginx-entry --replicas=5`，调度器自动平滑调度至 Worker 节点；
+3. **静态代码放在宿主机外面**：物理机通过统一路径（`/data/frontend/dist/`）存放前端打包产物；
+4. **K8s HostPath 热映射**：Nginx 容器只负责高性能 Web 引擎和反代，通过 Volume 挂载宿主机 `/data/frontend/dist`；
+5. **零重构镜像、秒级热更新**：前端 CI/CD 构建完成后，仅需 `rsync` 或 `scp` 覆盖宿主机目录，用户浏览器刷新即可即刻加载新版本！
 
 ### 9.2 优化后的 `nginx.conf` 核心提升亮点
 1. **单页面应用 (SPA) 路由防 404**：
@@ -820,7 +1361,7 @@ kubectl logs -n data-platform -l app=mysql-backup --tail=50
 
 ### 9.3 外部访问入口与运维命令
 ```bash
-# 1. 验证 Nginx Pod 状态与宿主机挂载
+# 1. 验证 3 个 Master 节点上的 Nginx Pod 状态与宿主机挂载
 kubectl get pods -n data-platform -l app=nginx -o wide
 
 # 2. 检查 Nginx 访问与错误日志 (实时落盘在宿主机 /data/frontend/logs/)
@@ -829,7 +1370,12 @@ kubectl logs -n data-platform -l app=nginx --tail=50 -f
 # 3. 前端发布更新 (仅需将打包后的 dist 目录覆盖至宿主机，无需重启 Pod)
 cp -r /path/to/your/dist/* /data/frontend/dist/
 
-# 4. 浏览器访问验证
+# 4. 后期扩容至 Worker 节点的弹性扩展命令:
+kubectl scale deployment nginx-entry -n data-platform --replicas=5
+# 观察新增的 Pod 自动调度到新增的 Worker 节点:
+kubectl get pods -n data-platform -l app=nginx -o wide
+
+# 5. 浏览器访问验证
 # - 前端业务系统入口: http://192.168.1.100:30088
 # - 健康检查接口:       http://192.168.1.100:30088/healthz (返回 healthy)
 # - 管理与清理缓存:     http://192.168.1.100:30080/purge/

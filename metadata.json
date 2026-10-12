@@ -1,6 +1,6 @@
 {
   "name": "CloudCluster Helm & Docker Suite",
-  "description": "Multi-service distributed cluster Helm charts and Docker specifications for MongoDB 8.0.9, Flink 1.9.3, MySQL 8.4.6, Redis 6.2.6, Kafka KRaft, ZooKeeper 3.6.3, Java 8, and MinIO S3.",
+  "description": "Enterprise distributed cluster Helm charts and Kubernetes architecture for MongoDB 8.0, Flink 2.0, MySQL 8.4, Redis 6.2, Kafka 4.0.1 KRaft, ZooKeeper 3.9.3, Java 21 LTS, Nginx 3-Master frontend gateway, and MinIO S3.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

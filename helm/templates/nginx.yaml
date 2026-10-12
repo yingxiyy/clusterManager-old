@@ -11,7 +11,7 @@ data:
     # ==============================================================================
     # Nginx Production Configuration - Enterprise Frontend Entry & API Gateway
     # ==============================================================================
-    user  root;
+    user  {{ .Values.nginx.user | default "dci" }};
     worker_processes  auto;
     worker_rlimit_nofile 65535;
 
@@ -54,8 +54,8 @@ data:
             ''      close;
         }
 
-        # Upstream Gateway Proxy Pool with HTTP Keepalive
-        upstream dci_backend {
+        # Upstream Gateway Proxy Pool with HTTP Keepalive (Optimized dci.org)
+        upstream dci.org {
             server {{ .Values.nginx.upstream.server | default "gateway:8080" }};
             keepalive 32;
         }
@@ -70,14 +70,14 @@ data:
             index        index.html index.htm;
 
             access_log   /home/dci/web/log/nginx_access.log main;
-            error_log    /home/dci/web/log/nginx_error.log warn;
+            error_log    /home/dci/web/log/nginx_error.log error;
 
             error_page   500 502 503 504  /50x.html;
             location = /50x.html {
                 root   /usr/share/nginx/html;
             }
 
-            # Liveness Probe
+            # Liveness & Readiness Probe
             location = /healthz {
                 access_log off;
                 return 200 "healthy\n";
@@ -85,7 +85,7 @@ data:
 
             # 1. API Reverse Proxy with Full WebSocket & Streaming Support
             location ~ ^/(restconf|resource|deviceLog|historyPm|idc|create|alarm|telemetry|pm-ws|create-notification|pmreport|oauth2|users|roles|permission|taskinfo|maintenance-tool|advance|cli|system|apsswitchlog) {
-                proxy_pass http://dci_backend;
+                proxy_pass http://dci.org;
                 proxy_http_version 1.1;
 
                 # Full-duplex WebSocket Protocol Upgrade
@@ -103,7 +103,7 @@ data:
                 # Buffer & Timeout Tuning for High Throughput & Large Payloads
                 client_max_body_size 50m;
                 client_body_buffer_size 256k;
-                proxy_connect_timeout 60s;
+                proxy_connect_timeout 600s;
                 proxy_send_timeout 600s;
                 proxy_read_timeout 600s;
                 proxy_buffer_size 256k;
@@ -119,7 +119,6 @@ data:
                 root /home/dci/web/dist;
                 expires 30d;
                 add_header Cache-Control "public, no-transform, max-age=2592000";
-                access_log off;
             }
 
             # 3. HTML No-Cache Policy (Ensures Immediate Updates upon CI/CD Frontend Release)
@@ -141,7 +140,7 @@ data:
         # --------------------------------------------------------------------------
         server {
             listen       {{ .Values.nginx.ports.mgmt | default 8000 }};
-            server_name  localhost;
+            server_name  10.242.111.29 localhost;
             charset      utf-8;
 
             location ~ /purge(/.*) {
@@ -180,7 +179,7 @@ metadata:
     app: nginx
     {{- include "cloudcluster.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.nginx.replicas | default 2 }}
+  replicas: {{ .Values.nginx.replicas | default 3 }}
   selector:
     matchLabels:
       app: nginx
@@ -189,10 +188,27 @@ spec:
       labels:
         app: nginx
     spec:
+      {{- with .Values.nginx.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nginx.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: nginx
           image: "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Ensure user dci exists and directories are prepared
+              id -u dci >/dev/null 2>&1 || (adduser -D -u 1000 dci 2>/dev/null || useradd -u 1000 dci 2>/dev/null || true)
+              mkdir -p /home/dci/web/log /home/dci/web/dist
+              chown -R dci:dci /home/dci/web/log /home/dci/web/dist 2>/dev/null || true
+              exec nginx -g 'daemon off;'
           ports:
             - name: http
               containerPort: {{ .Values.nginx.ports.http | default 8088 }}

@@ -1,9 +1,9 @@
 # ==============================================================================
-# Dockerfile: Apache ZooKeeper 3.6.3 on Java 1.8 (OpenJDK 8)
+# Dockerfile: Apache ZooKeeper 3.9.3 on Java 21 LTS (OpenJDK 21)
 # ==============================================================================
-FROM eclipse-temurin:8-jre-focal
+FROM eclipse-temurin:21-jre-jammy
 
-ENV ZK_VERSION=3.6.3 \
+ENV ZK_VERSION=3.9.3 \
     ZK_HOME=/opt/zookeeper \
     PATH=$PATH:/opt/zookeeper/bin
 

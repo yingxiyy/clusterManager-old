@@ -494,7 +494,10 @@ echo "==> Step 5: Verification & cluster health check via ${cleanNewEndpoint}:${
 
   // Mount Vite development middlewares
   const vite = await createViteServer({
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      allowedHosts: true,
+    },
     appType: 'spa',
   });
   app.use(vite.middlewares);
