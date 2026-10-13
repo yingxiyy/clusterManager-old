@@ -97,9 +97,9 @@ if ! kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1; then
   kubectl create namespace "${NAMESPACE}"
 fi
 
-WAIT_FLAG=()
+HELM_EXTRA_FLAGS=()
 if [ "${4:-}" = "--wait" ]; then
-  WAIT_FLAG=(--wait --timeout 15m)
+  HELM_EXTRA_FLAGS+=(--wait --timeout 15m)
 fi
 
 echo "--> 正在向 Kubernetes 提交 Helm Chart 配置..."
@@ -108,7 +108,8 @@ helm upgrade --install "${RELEASE_NAME}" ./helm \
   --create-namespace \
   -f "${VALUES_FILE}" \
   "${EXTRA_VALUES_ARGS[@]}" \
-  "${WAIT_FLAG[@]}"
+  --no-hooks \
+  "${HELM_EXTRA_FLAGS[@]}"
 
 echo "======================================================================"
 echo " 🎉 Helm Stack 资源已成功下发至集群！"
