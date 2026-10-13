@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { exec } from 'child_process';
 import path from 'path';
 import fs from 'fs';
@@ -492,15 +491,26 @@ echo "==> Step 5: Verification & cluster health check via ${cleanNewEndpoint}:${
     });
   });
 
-  // Mount Vite development middlewares
-  const vite = await createViteServer({
-    server: {
-      middlewareMode: true,
-      allowedHosts: true,
-    },
-    appType: 'spa',
-  });
-  app.use(vite.middlewares);
+  // Mount Vite development middlewares or serve static build
+  const distPath = path.join(__dirname, 'dist');
+  if (fs.existsSync(distPath)) {
+    console.log(`[Server] Serving production static files from ${distPath}`);
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    console.log('[Server] Mounting Vite development middleware...');
+    const { createServer: createViteServer } = await import('vite');
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+      },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on http://0.0.0.0:${PORT}`);
