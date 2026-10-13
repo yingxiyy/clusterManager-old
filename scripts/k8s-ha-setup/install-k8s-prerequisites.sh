@@ -70,8 +70,12 @@ EOF
   yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 fi
 
-echo "===> [5/5] Enabling Kubelet service..."
+echo "===> [5/5] Enabling Kubelet service and pre-pulling images..."
 systemctl enable --now kubelet
+
+# Pre-pull images using Aliyun mirror so join/init happens instantly without network delays
+echo "===> Pre-pulling Kubernetes images from registry.aliyuncs.com/google_containers..."
+kubeadm config images pull --image-repository registry.aliyuncs.com/google_containers || true
 
 echo "------------------------------------------------------------------"
 echo "✅ Kubernetes (${K8S_VERSION}) components & containerd installed successfully!"
